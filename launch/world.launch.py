@@ -167,6 +167,20 @@ def generate_launch_description():
         period=5.0,
         actions=[spawn_aruco_cubes]
     )
+    
+    aruco_detection = Node(
+        package='ros2_aruco',
+        executable='aruco_node',
+        name='aruco_node',
+        output='screen',
+        parameters=[{
+            'marker_size': 0.09,
+            'aruco_dictionary_id': 'DICT_ARUCO_ORIGINAL',
+            'camera_frame': 'camera_rgb_optical_frame',
+            'reference_frame': 'map',
+            'use_sim_time': use_sim_time,
+        }]
+    )
 
     ld = LaunchDescription()
 
@@ -193,6 +207,7 @@ def generate_launch_description():
         )
     )
     ld.add_action(navigation_cmd)
+    ld.add_action(aruco_detection)
 
 
     return ld

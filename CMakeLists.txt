@@ -4,6 +4,11 @@ project(arm05_sim)
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_python REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
+
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "action/SearchAruco.action"
+)
 
 install(DIRECTORY
   worlds
@@ -18,6 +23,7 @@ ament_python_install_package(scripts_arm05)
 
 install(PROGRAMS
   scripts_arm05/spawn_aruco.py
+  scripts_arm05/aruco_search_action_server.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

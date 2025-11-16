@@ -1,0 +1,11 @@
+# Goal: Start searching for ArUco markers
+bool start_search  # Set to true to start
+---
+# Result: Summary of found markers
+int32[] found_marker_ids      # List of all detected marker IDs
+float32 total_search_time     # How long the search took
+---
+# Feedback: Progress during search
+int32 waypoint_index          # Current waypoint number
+int32 total_waypoints         # Total waypoints to visit
+int32[] currently_found_ids   # Markers found so far

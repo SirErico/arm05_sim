@@ -140,17 +140,18 @@ def generate_launch_description():
         launch_arguments={'use_sim_time': use_sim_time}.items()
     )
 
-    navigation_cmd = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(nav2_launch_dir, 'bringup_launch.py')
-        ),
-        launch_arguments={
-            'map': map_file,
-            'params_file': params_file,
-            'use_sim_time': use_sim_time,
-            'autostart': 'true'
-        }.items()
-    )
+    # don't need nav2 launch, running it separately
+    # navigation_cmd = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource(
+    #         os.path.join(nav2_launch_dir, 'bringup_launch.py')
+    #     ),
+    #     launch_arguments={
+    #         'map': map_file,
+    #         'params_file': params_file,
+    #         'use_sim_time': use_sim_time,
+    #         'autostart': 'true'
+    #     }.items()
+    # )
 
 
     spawn_aruco_cubes = Node(
@@ -206,7 +207,7 @@ def generate_launch_description():
             }.items()
         )
     )
-    ld.add_action(navigation_cmd)
+    # ld.add_action(navigation_cmd)
     ld.add_action(aruco_detection)
 
 

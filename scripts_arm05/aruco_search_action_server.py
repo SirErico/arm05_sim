@@ -2,8 +2,7 @@
 
 import rclpy
 from rclpy.node import Node
-from rclpy.action import ActionServer
-from rclpy.action import ActionClient
+from rclpy.action import ActionServer, ActionClient
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 
@@ -11,7 +10,7 @@ from arm05_sim.action import SearchAruco
 from nav2_msgs.action import NavigateToPose
 from ros2_aruco_interfaces.msg import ArucoMarkers
 from geometry_msgs.msg import PoseStamped
-from nav_msgs.msg import OccupancyGrid, Path
+from nav_msgs.msg import OccupancyGrid
 
 import numpy as np
 import time
@@ -92,8 +91,15 @@ class ArucoSearchActionServer(Node):
                 )
     
     async def execute_callback(self, goal_handle):
-        """Main action execution - this runs when you send a goal"""
-        self.get_logger().info('=== Starting Aruco Search ===')
+        self.get_logger().info('Starting search')
+        
+        # Get goal parameters
+        required_markers = goal_handle.request.required_markers
+        max_search_time = goal_handle.request.max_search_time
+        if max_search_time <= 0:
+            max_search_time = 600.0  # Default 10 minutes
+        
+        self.get_logger().info(f'Target: {required_markers} markers, Max time: {max_search_time}s')
         start_time = time.time()
         
         # Step 1: Wait for map
@@ -126,27 +132,46 @@ class ArucoSearchActionServer(Node):
             result.total_search_time = 0.0
             goal_handle.abort()
             return result
-        self.get_logger().info('Nav2 is ready!')
         
         # Step 4: Clear previous detections and visit each waypoint
         self.detected_markers.clear()
-        self.get_logger().info('Step 4: Visiting waypoints...')
+        self.get_logger().info(f'Step 4: Searching for {required_markers} markers...')
         
-        for i, waypoint in enumerate(self.coverage_path):
-            # Navigate to waypoint
-            self.get_logger().info(f'Going to waypoint {i+1}/{len(self.coverage_path)}: ({waypoint[0]:.1f}, {waypoint[1]:.1f})')
-            success = await self.go_to_point(waypoint[0], waypoint[1])
+        waypoint_idx = 0
+        search_round = 1
+        
+        while True:
+            # Check if we found all required markers
+            if len(self.detected_markers) >= required_markers:
+                self.get_logger().info(f'Found all {required_markers} markers')
+                break
             
-            if not success:
-                self.get_logger().warn(f'Failed to reach waypoint {i+1}')
+            # Check timeout
+            elapsed_time = time.time() - start_time
+            if elapsed_time > max_search_time:
+                self.get_logger().warn(
+                    f'TIMEOUT! Searched for {elapsed_time:.1f}s, '
+                    f'found only {len(self.detected_markers)}/{required_markers} markers'
+                )
+                break
             
-            # Publish feedback after each waypoint (markers are detected continuously by callback)
+            if waypoint_idx >= len(self.coverage_path):
+                self.get_logger().info(f'Round {search_round} complete, found {len(self.detected_markers)}/{required_markers}')
+                waypoint_idx = 0
+                search_round += 1
+            
+            waypoint = self.coverage_path[waypoint_idx]
+            self.get_logger().info(f'[{waypoint_idx+1}/{len(self.coverage_path)}] -> ({waypoint[0]:.1f}, {waypoint[1]:.1f})')
+            
+            await self.go_to_point(waypoint[0], waypoint[1])
+            
             feedback = SearchAruco.Feedback()
-            feedback.waypoint_index = i + 1
+            feedback.waypoint_index = waypoint_idx + 1
             feedback.total_waypoints = len(self.coverage_path)
             feedback.currently_found_ids = list(self.detected_markers.keys())
             goal_handle.publish_feedback(feedback)
-            self.get_logger().info(f'Markers found so far: {feedback.currently_found_ids}')
+            
+            waypoint_idx += 1
         
         # Step 5: Return results
         total_time = time.time() - start_time
@@ -154,17 +179,15 @@ class ArucoSearchActionServer(Node):
         result.found_marker_ids = list(self.detected_markers.keys())
         result.total_search_time = total_time
         
-        self.get_logger().info(f'=== Search Complete! ===')
-        self.get_logger().info(f'Found {len(result.found_marker_ids)} markers: {result.found_marker_ids}')
+        self.get_logger().info(f'Search complete: {len(result.found_marker_ids)}/{required_markers} markers in {total_time:.1f}s')
         for marker_id, pos in self.detected_markers.items():
-            self.get_logger().info(f"  Marker {marker_id}: ({pos['x']:.2f}, {pos['y']:.2f})")
-        self.get_logger().info(f'Time: {total_time:.1f} seconds')
-        if not self.detected_markers.items():
-            self.get_logger().info('No markers found during search.')
-            result = SearchAruco.Result()
-            result.succeeded = False
-            return result
-        goal_handle.succeed()
+            self.get_logger().info(f"  {marker_id}: ({pos['x']:.2f}, {pos['y']:.2f})")
+        
+        if len(self.detected_markers) >= required_markers:
+            goal_handle.succeed()
+        else:
+            goal_handle.abort()
+        
         return result
     
     async def go_to_point(self, x, y):
@@ -187,19 +210,12 @@ class ArucoSearchActionServer(Node):
             
             self.get_logger().info(f'Goal accepted, navigating...')
             result = await goal_handle.get_result_async()
-            
-            if result.status == 4:  # SUCCEEDED
-                self.get_logger().info(f'Reached waypoint!')
-                return True
-            else:
-                self.get_logger().warn(f'Navigation ended with status {result.status}')
-                return False
+            return result.status == 4
         except Exception as e:
-            self.get_logger().error(f'Navigation error: {e}')
+            self.get_logger().error(f'Nav error: {e}')
             return False
     
     def is_free_space(self, x, y):
-        """Check if point is in free space on the map"""
         if self.occupancy_grid is None:
             return False
         

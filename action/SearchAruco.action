@@ -1,5 +1,6 @@
 # Goal: Start searching for ArUco markers
-bool start_search  # Set to true to start
+int32 required_markers  # Number of markers to find
+float32 max_search_time  # Maximum search time in seconds
 ---
 # Result: Summary of found markers
 int32[] found_marker_ids      # List of all detected marker IDs
